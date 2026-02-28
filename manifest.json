@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "GPhotos Estate Annotator",
+  "version": "1.0.0",
+  "description": "Annotate Google Photos for estate inventory management",
+  "permissions": ["identity", "storage", "activeTab"],
+  "host_permissions": [
+    "https://photos.google.com/*",
+    "https://sheets.googleapis.com/*"
+  ],
+  "oauth2": {
+    "client_id": "PLACEHOLDER.apps.googleusercontent.com",
+    "scopes": ["https://www.googleapis.com/auth/spreadsheets"]
+  },
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://photos.google.com/*"],
+      "js": ["src/content/index.ts"],
+      "css": ["src/content/overlay.css"],
+      "run_at": "document_idle"
+    }
+  ],
+  "action": {
+    "default_popup": "src/popup/index.html"
+  }
+}
