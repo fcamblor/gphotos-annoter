@@ -1,11 +1,10 @@
 export async function getAuthToken(interactive = true): Promise<string> {
-  const result = await chrome.identity.getAuthToken({ interactive });
+  const result = await chrome.runtime.sendMessage({
+    type: 'LAUNCH_WEB_AUTH_FLOW',
+    interactive,
+  });
   if (!result.token) {
-    throw new Error('No token received');
+    throw new Error(result.error || 'No token received');
   }
   return result.token;
-}
-
-export async function removeCachedToken(token: string): Promise<void> {
-  await chrome.identity.removeCachedAuthToken({ token });
 }

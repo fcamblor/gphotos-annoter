@@ -15,9 +15,23 @@ export function renderDots(
   // Clear existing dots
   overlay.querySelectorAll('.annotator-dot').forEach((el) => el.remove());
 
+  console.log('[GPhotos Annotator] Rendering dots', {
+    totalItems: items.length,
+    currentPhotoId,
+    itemsWithPlaceholders: items.filter(i => i.placeholders.length > 0).length
+  });
+
+  let dotsRendered = 0;
   for (const item of items) {
     const placeholder = item.placeholders.find((p) => p.gphoto === currentPhotoId);
     if (!placeholder) continue;
+
+    console.log('[GPhotos Annotator] Rendering dot for item', {
+      itemName: item.name,
+      x: placeholder.x,
+      y: placeholder.y,
+      color: item.color
+    });
 
     const dot = document.createElement('div');
     dot.className = 'annotator-dot';
@@ -34,5 +48,27 @@ export function renderDots(
     });
 
     overlay.appendChild(dot);
+    
+    // Log dot details after appending
+    setTimeout(() => {
+      const computedStyle = window.getComputedStyle(dot);
+      console.log('[GPhotos Annotator] Dot appended', {
+        itemName: item.name,
+        left: dot.style.left,
+        top: dot.style.top,
+        backgroundColor: dot.style.backgroundColor,
+        computedDisplay: computedStyle.display,
+        computedPosition: computedStyle.position,
+        computedWidth: computedStyle.width,
+        computedHeight: computedStyle.height,
+        computedZIndex: computedStyle.zIndex,
+        offsetParent: dot.offsetParent?.tagName,
+        boundingRect: dot.getBoundingClientRect()
+      });
+    }, 100);
+    
+    dotsRendered++;
   }
+
+  console.log('[GPhotos Annotator] Dots rendered:', dotsRendered);
 }
