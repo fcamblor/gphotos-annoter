@@ -9,6 +9,9 @@ export class OverlayController {
   private currentImg: HTMLImageElement | null = null;
   private currentPhotoId: string | null = null;
   private allItems: Item[] = [];
+  private clickTimer: ReturnType<typeof setTimeout> | null = null;
+  private isDoubleClickInProgress = false;
+  private dblClickDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   // These callbacks are set externally (by index.ts) to wire up panels
   onDotClick: ((item: Item, event: MouseEvent) => void) | null = null;
@@ -113,7 +116,43 @@ export class OverlayController {
         zIndex: window.getComputedStyle(this.currentImg).zIndex
       }
     });
-    
+
+    // Intercept clicks in capture phase to prevent Google Photos navigation during double-click
+    const clickInterceptor = (e: MouseEvent) => {
+      console.log('[GPhotos Annotator] Click interceptor', {
+        detail: e.detail,
+        isDoubleClickInProgress: this.isDoubleClickInProgress
+      });
+
+      if (e.detail === 1) {
+        // First click - wait to see if a second click follows
+        if (this.clickTimer) {
+          clearTimeout(this.clickTimer);
+        }
+
+        // Set flag immediately to block navigation
+        this.isDoubleClickInProgress = true;
+
+        this.clickTimer = setTimeout(() => {
+          // No second click came - it was a single click, allow navigation
+          this.isDoubleClickInProgress = false;
+          console.log('[GPhotos Annotator] Single click confirmed, navigation allowed');
+        }, 300);
+      } else if (e.detail === 2) {
+        // Second click of a double-click - block navigation
+        e.stopPropagation();
+        e.preventDefault();
+        console.log('[GPhotos Annotator] Second click blocked to prevent navigation');
+      }
+
+      // If double-click is in progress, block ALL clicks
+      if (this.isDoubleClickInProgress && e.detail === 1) {
+        e.stopPropagation();
+        e.preventDefault();
+        console.log('[GPhotos Annotator] First click blocked (double-click in progress)');
+      }
+    };
+
     // Global double-click listener to detect any dblclick on the page
     const globalDblClickListener = (e: MouseEvent) => {
       console.log('[GPhotos Annotator] Global double-click detected on', {
@@ -123,59 +162,79 @@ export class OverlayController {
         className: (e.target as HTMLElement)?.className,
         isCurrentImg: e.target === this.currentImg
       });
-      
+
+      // Block navigation
+      e.stopPropagation();
+      e.preventDefault();
+
       // If it's an image element and we're mounted, handle it
       if ((e.target as HTMLElement)?.tagName === 'IMG' && this.currentPhotoId) {
         const img = e.target as HTMLImageElement;
         if (img.src.includes('googleusercontent.com')) {
           console.log('[GPhotos Annotator] Handling double-click from global listener');
-          
+
           // Update currentImg to the one that actually receives events
           if (this.currentImg !== img) {
             console.log('[GPhotos Annotator] Switching to event-receiving image', {
               oldClassName: this.currentImg?.className,
               newClassName: img.className
             });
-            
+
             // Remove listeners from old image
             if (this.currentImg) {
               this.currentImg.removeEventListener('dblclick', this.handleDoubleClick);
+              this.currentImg.removeEventListener('click', clickInterceptor, true);
             }
-            
+
             // Update to new image and reposition overlay
             this.currentImg = img;
             this.resizeObserver?.disconnect();
             this.resizeObserver = new ResizeObserver(() => this.positionOverlay());
             this.resizeObserver.observe(img);
             this.positionOverlay();
+
+            // Attach click interceptor to new image
+            img.addEventListener('click', clickInterceptor, true);
           }
-          
+
           const rect = img.getBoundingClientRect();
           const x = (e.clientX - rect.left) / rect.width;
           const y = (e.clientY - rect.top) / rect.height;
           console.log('[GPhotos Annotator] Coordinates from global listener', { x, y, photoId: this.currentPhotoId });
-          this.onDoubleClick?.(x, y, this.currentPhotoId);
+
+          // Debounce the callback to only call it once
+          if (this.dblClickDebounceTimer) {
+            clearTimeout(this.dblClickDebounceTimer);
+          }
+
+          this.dblClickDebounceTimer = setTimeout(() => {
+            this.onDoubleClick?.(x, y, this.currentPhotoId!);
+            this.isDoubleClickInProgress = false;
+            console.log('[GPhotos Annotator] Double-click handler completed');
+          }, 50);
         }
       }
     };
-    
+
+    // Attach listeners in capture phase to intercept before Google Photos
+    this.currentImg.addEventListener('click', clickInterceptor, true);
     document.addEventListener('dblclick', globalDblClickListener, true);
-    
+
     // Add test listeners to debug event propagation
     this.currentImg.addEventListener('click', (e) => {
       console.log('[GPhotos Annotator] Single click detected on image', e);
     }, true);
-    
+
     this.currentImg.addEventListener('mousedown', (e) => {
       console.log('[GPhotos Annotator] Mouse down on image', { button: e.button, detail: e.detail });
     }, true);
-    
+
     this.currentImg.addEventListener('mouseup', (e) => {
       console.log('[GPhotos Annotator] Mouse up on image', { button: e.button, detail: e.detail });
     }, true);
-    
+
     this.currentImg.addEventListener('dblclick', this.handleDoubleClick, true);
-    
+
     // Also try without capture phase
     this.currentImg.addEventListener('dblclick', (e) => {
       console.log('[GPhotos Annotator] Double-click (bubble phase)', e);
@@ -217,6 +276,15 @@ export class OverlayController {
     if (this.currentImg) {
       this.currentImg.removeEventListener('dblclick', this.handleDoubleClick);
     }
+    if (this.clickTimer) {
+      clearTimeout(this.clickTimer);
+      this.clickTimer = null;
+    }
+    if (this.dblClickDebounceTimer) {
+      clearTimeout(this.dblClickDebounceTimer);
+      this.dblClickDebounceTimer = null;
+    }
+    this.isDoubleClickInProgress = false;
     this.overlay?.remove();
     this.overlay = null;
     this.resizeObserver?.disconnect();
